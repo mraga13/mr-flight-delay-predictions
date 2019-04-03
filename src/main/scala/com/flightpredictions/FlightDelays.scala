@@ -5,9 +5,10 @@ import org.apache.spark.{SparkConf, SparkContext}
 import org.apache.spark.sql.{Dataset,DataFrame, SparkSession}
 import java.text.SimpleDateFormat
 
-import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types._
 import org.apache.spark.sql._
+import org.apache.spark.sql.functions._
+import org.apache.spark.ml.feature.Bucketizer
 
 object FlightDelays {
 
@@ -112,6 +113,21 @@ object FlightDelays {
     df.filter($"depdelay" > 40).groupBy("origin").agg(count("depdelay").as("depdelay")).orderBy(desc("depdelay"))show()
 //    spark.sql("select origin,count(depdelay) from flights group by origin").show
 
+    val delaybucketizer = new Bucketizer().setInputCol("depdelay").setOutputCol("delayed").setSplits(Array(0.0, 40.0, Double.PositiveInfinity))
+
+    val df4 = delaybucketizer.transform(df)
+    df4.groupBy("delayed").count.show
+//    spark.sql("select delayed,count(*) count from (select case when depdelay >= 40 then 1.0 when depdelay < 40 then 0.0 end as delayed from flights) a group by delayed").show(false)
+
+    //Stratified sampling
+    val fractions = Map(0.0 -> .13, 1.0 -> 1.0)
+
+    val strain = df4.stat.sampleBy("delayed", fractions, 36L)
+
+    val Array(trainingData, testData) = strain
+      .randomSplit(Array(0.7, 0.3), 5043)
+
+    strain.groupBy("delayed").count.show
 
 
 
